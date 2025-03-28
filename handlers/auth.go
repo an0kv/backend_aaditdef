@@ -21,12 +21,10 @@ func RegisterUser(c *gin.Context) {
 		return
 	}
 
-	// Хэширование пароля
 	hashedPassword, _ := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	user.Password = string(hashedPassword)
 	user.CreatedAt = time.Now()
 
-	// Сохранение в MongoDB
 	usersCollection := database.MongoClient.Database("security").Collection("users")
 	_, err := usersCollection.InsertOne(context.TODO(), user)
 	if err != nil {
@@ -48,7 +46,6 @@ func LoginUser(c *gin.Context) {
 		return
 	}
 
-	// Поиск пользователя
 	usersCollection := database.MongoClient.Database("security").Collection("users")
 	var user models.User
 	err := usersCollection.FindOne(context.TODO(), bson.M{"email": input.Email}).Decode(&user)
@@ -57,13 +54,11 @@ func LoginUser(c *gin.Context) {
 		return
 	}
 
-	// Проверка пароля
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
-	// Генерация JWT токена
 	token := utils.GenerateJWT(user.ID)
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }

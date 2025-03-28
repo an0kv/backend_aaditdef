@@ -17,11 +17,9 @@ import (
 	"backend/models"
 )
 
-var cfg *config.Config // Глобальная переменная для конфигурации
+var cfg *config.Config
 
-// ScanFile обрабатывает запрос на сканирование файла
 func ScanFile(c *gin.Context) {
-	// Загружаем конфигурацию
 	cfg = config.LoadConfig()
 
 	var input struct {
@@ -33,10 +31,8 @@ func ScanFile(c *gin.Context) {
 		return
 	}
 
-	// Вычисляем SHA-256 хэш файла
 	fileHash := calculateSHA256(input.FileData)
 
-	// Проверяем наличие хэша в базе
 	scansCollection := database.MongoClient.Database("security").Collection("scans")
 	var scan models.Scan
 	err := scansCollection.FindOne(context.TODO(), bson.M{"fileHash": fileHash}).Decode(&scan)
@@ -45,7 +41,6 @@ func ScanFile(c *gin.Context) {
 		return
 	}
 
-	// Создаем новую запись о сканировании
 	newScan := models.Scan{
 		ID:        fmt.Sprintf("%v", time.Now().UnixNano()),
 		FileHash:  fileHash,
@@ -58,7 +53,6 @@ func ScanFile(c *gin.Context) {
 		return
 	}
 
-	// Асинхронная проверка файла через VirusTotal
 	go func(fileHash string) {
 		result, err := checkFileWithVirusTotal(fileHash, cfg.VTAPIKey)
 		if err != nil {
@@ -80,9 +74,7 @@ func ScanFile(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Scan initiated", "scanId": newScan.ID})
 }
 
-// ScanPhoneFiles обрабатывает запрос на сканирование файлов телефона
 func ScanPhoneFiles(c *gin.Context) {
-	// Загружаем конфигурацию
 	cfg = config.LoadConfig()
 
 	var input struct {
@@ -101,7 +93,6 @@ func ScanPhoneFiles(c *gin.Context) {
 	scansCollection := database.MongoClient.Database("security").Collection("scans")
 
 	for _, file := range input.Files {
-		// Проверяем наличие файла в базе
 		var scan models.Scan
 		err := scansCollection.FindOne(context.TODO(), bson.M{"fileHash": file.Hash}).Decode(&scan)
 		if err == nil {
@@ -112,7 +103,6 @@ func ScanPhoneFiles(c *gin.Context) {
 			continue
 		}
 
-		// Создаем новую запись о сканировании
 		newScan := models.Scan{
 			ID:        fmt.Sprintf("%v", time.Now().UnixNano()),
 			FileHash:  file.Hash,
@@ -128,7 +118,6 @@ func ScanPhoneFiles(c *gin.Context) {
 			continue
 		}
 
-		// Асинхронная проверка файла через VirusTotal
 		go func(filePath string, fileHash string) {
 			result, err := checkFileWithVirusTotal(fileHash, cfg.VTAPIKey)
 			if err != nil {
@@ -156,7 +145,6 @@ func ScanPhoneFiles(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"results": results})
 }
 
-// GetScanResult возвращает результат сканирования по ID
 func GetScanResult(c *gin.Context) {
 	scanID := c.Param("id")
 
@@ -177,19 +165,15 @@ func calculateSHA256(data string) string {
 }
 
 func checkFileWithVirusTotal(fileHash string, vtAPIKey string) (string, error) {
-	// URL для проверки файла по хэшу
 	url := fmt.Sprintf("https://www.virustotal.com/api/v3/files/%s", fileHash)
 
-	// Создаем HTTP-запрос
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to create request: %v", err)
 	}
 
-	// Добавляем заголовок с API-ключом
 	req.Header.Set("x-apikey", vtAPIKey)
 
-	// Отправляем запрос
 	client := &http.Client{}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -197,18 +181,15 @@ func checkFileWithVirusTotal(fileHash string, vtAPIKey string) (string, error) {
 	}
 	defer resp.Body.Close()
 
-	// Проверяем статус ответа
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	// Парсим JSON-ответ
 	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", fmt.Errorf("failed to decode response: %v", err)
 	}
 
-	// Извлекаем результаты анализа
 	data, ok := result["data"].(map[string]interface{})
 	if !ok {
 		return "", fmt.Errorf("invalid response format")
